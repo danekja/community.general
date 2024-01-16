@@ -366,8 +366,6 @@ def main():
     name = module.params.get('name')
     force = module.params.get('force')
     state = module.params.get('state')
-    enabled = module.params.get('enabled')
-    provider_id = module.params.get('provider_id')
     parent_id = module.params.get('parent_id')
 
     # Get a list of all Keycloak components that are of keyprovider type.
@@ -402,9 +400,18 @@ def main():
 
             # Compare parameters under the "config" key
             for p, v in changeset_copy['config'].items():
-                before_realm_key['config'][p] = key['config'][p]
-                if changeset_copy['config'][p] != key['config'][p]:
-                    changes += "config.%s: %s -> %s, " % (p, key['config'][p], changeset_copy['config'][p])
+
+                # Keycloak API does not return all of config keys for the default key providers for some reason
+                # until their configuration has been changed at least once
+                key_config_exists = p in key['config']
+                if key_config_exists:
+                    before_realm_key['config'][p] = key['config'][p]
+
+                # this will result in "changed" for default key providers in the first run even if the config
+                # value is the same, only not returned by Keycloak API. Subsequent runs will contain
+                # complete config list, meaning idempotence is maintained
+                if not key_config_exists or changeset_copy['config'][p] != key['config'][p]:
+                    changes += "config.%s: %s -> %s, " % (p, key['config'][p] if key_config_exists else None, changeset_copy['config'][p])
                     result['changed'] = True
 
     # Sanitize linefeeds for the privateKey. Without this the JSON payload
